@@ -18,7 +18,7 @@ int gameState;
 int winner;
 int tiles[9];
 
-void renderMainMenu(GLFWwindow *win) {
+void renderMainMenu() {
 	/* Main menu consists of:
 	 * background
 	 * title
@@ -127,7 +127,7 @@ void drawTile(int type, GLfloat dx, GLfloat dy) {
 	}
 }
 
-void renderPlayground(GLFWwindow *win) {
+void renderPlayground() {
 	/* Game screen consists of:
 	 * Table with 3x3 tiles;
 	 * Players crosses and circles in that tiles
@@ -141,16 +141,6 @@ void renderPlayground(GLFWwindow *win) {
 	 * Need to define border width and its coordinates
 	 * Tile size is .25×.3
 	 */
-	static const GLfloat ptsBordersVertex[] = {
-		-.25f, -.6, 0.0f,
-		-.25f,  .6, 0.0f,
-		 .25f, -.6, 0.0f,
-		 .25f,  .6, 0.0f,
-		-.5, -.3f, 0.0f,
-		 .5, -.3f, 0.0f,
-		-.5,  .3f, 0.0f,
-		 .5,  .3f, 0.0f
-	};
 	drawBorders();
 
 	const GLfloat dx = 0.25f * 2;
@@ -238,12 +228,13 @@ void renderWin(GLFWwindow *win, int state) {
 	 */
 	switch (state) {
 		case 1: /* Main Menu (Currently without it) */
-			renderMainMenu(win);
+			renderMainMenu();
 			break;
 		case 2: /* Game itself */
 			doTurn();
+			[[fallthrough]];
 		case 3:
-			renderPlayground(win);
+			renderPlayground();
 			break;
 		default:
 			Fail("Rendering error: unknown game state");

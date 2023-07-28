@@ -1,3 +1,4 @@
 .ccls*
 *.o
+*.out*
 TicTacToe
