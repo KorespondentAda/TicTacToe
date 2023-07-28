@@ -5,7 +5,7 @@
 
 GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	/* Load shader code from file */
-	const char *data[2];
+	char *data[2];
 	FILE *file = fopen(vertexFile, "rb");
 	if (!file) Error("Can't open shader file");
 	fseek(file, 0, SEEK_END);
@@ -27,7 +27,8 @@ GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 
 	GLint res;
 	GLuint shVertex = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(shVertex, 1, data, NULL);
+	glShaderSource(shVertex, 1, &(data[0]), NULL);
+	free(data[0]);
 	glCompileShader(shVertex);
 	glGetShaderiv(shVertex, GL_COMPILE_STATUS, &res);
 	if (!res) {
@@ -37,7 +38,8 @@ GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	Debug("Vertex shader compiled");
 
 	GLuint shFragment = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(shFragment, 1, data + 1, NULL);
+	glShaderSource(shFragment, 1, &(data[1]), NULL);
+	free(data[1]);
 	glCompileShader(shFragment);
 	glGetShaderiv(shFragment, GL_COMPILE_STATUS, &res);
 	if (!res) {
