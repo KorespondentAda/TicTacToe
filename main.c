@@ -61,6 +61,9 @@ void drawBorders() {
 	glDeleteBuffers(1, &vaTileBorders);
 }
 
+void drawStats() {
+}
+
 void drawCross(GLfloat dx, GLfloat dy) {
 	const float tx = 0.8f * 0.25f;
 	const float ty = 0.8f * 0.3f;
@@ -142,6 +145,12 @@ void renderPlayground() {
 	 * Tile size is .25×.3
 	 */
 	drawBorders();
+
+	/* Try to draw some stats at window bottom
+	 * Start with just colorful rectangles
+	 * Set rendered font texture to write "WIN - 0:0 - LOSE"
+	 */
+	drawStats();
 
 	const GLfloat dx = 0.25f * 2;
 	const GLfloat dy = 0.3f * 2;
