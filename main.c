@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "shadertools.h"
 #include "utils.h"
+#include <jpeglib.h>
 
 #define WIN_WIDTH 800
 #define WIN_HEIGHT 600
@@ -12,13 +14,156 @@
 #define CIRCLE_VERTEX_COUNT 16
 #define PI 3.14159265f
 
+struct Image {
+	JSAMPARRAY image;
+	int width;
+	int height;
+	int comps;
+};
+
+struct Image * imageCreate(int width, int height, int comps) {
+	struct Image *this;
+	if ((this = malloc(sizeof(struct Image))) == NULL) {
+		Error("Can't allocate struct Image");
+	}
+	this->height = height;
+	this->width = width;
+	this->comps = comps;
+	int rowLength = width * comps;
+	if ((this->image = malloc(height * sizeof(JSAMPROW))) == NULL) {
+		Error("Can't allocate Image rows array");
+	}
+	for (int i = 0; i < height; i++) {
+		if ((this->image[i] = malloc(rowLength * sizeof(JSAMPLE))) == NULL) {
+			Error("Can't allocate Image contents");
+		}
+	}
+	return this;
+}
+
+void imageDelete(struct Image *this) {
+	if (this == NULL) {
+		Error("Trying to delete non created image!");
+		return;
+	}
+	for (int i = 0; i < this->height; i++) {
+		free(this->image[i]);
+	}
+	free(this->image);
+	free(this);
+}
+
+void imageFillLine(struct Image *this, const JSAMPROW line, int linenum) {
+	if (this == NULL) {
+		Error("Trying to fill non created image!");
+		return;
+	}
+	for (int i = 0; i < this->width; i++) {
+		for (int j = 0; j < this->comps; j++) {
+			this->image[linenum][i+j] = line[i+j];
+		}
+	}
+}
+
 /* TODO Move to structure */
 GLuint progBorders;
+GLuint progText;
+GLuint texText;
 int gameState;
 int winner;
 int tiles[9];
 
-void renderMainMenu() {
+struct Image * loadImage() {
+	/* load JPEG
+	 * Allocate and initialize a JPEG decompression object
+	 * Specify the source of the compressed data (eg, a file)
+	 * Call jpeg_read_header() to obtain image info
+	 * Set parameters for decompression
+	 * jpeg_start_decompress(...);
+	 * while (scan lines remain to be read)
+	 * 	jpeg_read_scanlines(...);
+	 * jpeg_finish_decompress(...);
+	 * Release the JPEG decompression object
+	 */
+	const char textureFilename[] = "test.jpg";
+	FILE *img;
+	struct jpeg_decompress_struct cinfo;
+	struct jpeg_error_mgr jerr;
+	struct Image *result;
+
+	if ((img = fopen(textureFilename, "rb")) == NULL) {
+		Error("Can't open texture image");
+	}
+
+	cinfo.err = jpeg_std_error(&jerr);
+	jpeg_create_decompress(&cinfo);
+	jpeg_stdio_src(&cinfo, img);
+
+	Debug("JPEG header reading status: %d", jpeg_read_header(&cinfo, TRUE));
+
+	jpeg_start_decompress(&cinfo);
+	result = imageCreate(cinfo.output_width, cinfo.output_height, cinfo.output_components);
+	Debug("Reading texture image with size %dx%dx%d", result->width, result->height, result->comps);
+	JSAMPARRAY buf = (*cinfo.mem->alloc_sarray)((j_common_ptr)&cinfo, JPOOL_IMAGE, cinfo.output_width * cinfo.output_components, 1);
+	Debug("Line buffer memory allocated");
+	while (cinfo.output_scanline < cinfo.output_height) {
+		jpeg_read_scanlines(&cinfo, buf, 1);
+		imageFillLine(result, buf[0], cinfo.output_scanline - 1);
+	}
+	Debug("Texture image readed!");
+
+	jpeg_finish_decompress(&cinfo);
+	jpeg_destroy_decompress(&cinfo);
+	fclose(img);
+
+	if (jerr.num_warnings > 0) {
+		Debug("There are %d JPEG warnings after cleanup", jerr.num_warnings);
+	}
+
+	return result;
+}
+
+GLuint loadStatsTexture() {
+	static GLuint texture = 0;
+	if (texture != 0) return texture;
+
+	struct Image *textureImage;
+	textureImage = loadImage();
+
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, textureImage->width, textureImage->height, 0, GL_RGB, GL_UNSIGNED_BYTE, textureImage->image);
+	/* TODO Poor filtering, change to better later */
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	imageDelete(textureImage);
+
+	return texture;
+}
+
+/* Load shader programs
+ * Here can be found list of prepared shaders
+ */
+void loadPrograms() {
+	progBorders = LoadShaders("shaderBordersVertex.glsl", "shaderBordersFragment.glsl");
+	progText = LoadShaders("shaderTextVertex.glsl", "shaderTextFragment.glsl");
+	Debug("Shaders loaded");
+}
+
+void loadTextures() {
+	texText = loadStatsTexture();
+}
+
+/* Load external resources
+ * Here comes preparation like loading textures or shaders
+ */
+void loadResources() {
+	loadPrograms();
+	loadTextures();
+}
+
+void renderMainMenu(GLFWwindow *win) {
 	/* Main menu consists of:
 	 * background
 	 * title
@@ -61,7 +206,117 @@ void drawBorders() {
 	glDeleteBuffers(1, &vaTileBorders);
 }
 
+int fillStatsBuffers(char *str, GLuint vertice, GLuint uv) {
+	int symCount = strlen(str);
+	float bufVertices[symCount*2*3][3];
+	float bufUvs[symCount*2*3][2];
+
+	float x, y;
+	float width = 0.05f;
+	float height = 0.1f;
+
+	/* Fill buffer with vertices */
+	for (int i = 0; i < symCount; i++) {
+		x = width * i;
+		y = -1 + 0.05f;
+		bufVertices[i + 0 + 0][0] = x;
+		bufVertices[i + 0 + 0][1] = y;
+		bufVertices[i + 0 + 0][2] = 0;
+		bufVertices[i + 0 + 1][0] = x + width;
+		bufVertices[i + 0 + 1][1] = y + height;
+		bufVertices[i + 0 + 1][2] = 0;
+		bufVertices[i + 0 + 2][0] = x;
+		bufVertices[i + 0 + 2][1] = y + height;
+		bufVertices[i + 0 + 2][2] = 0;
+		bufVertices[i + 1 + 0][0] = x + width;
+		bufVertices[i + 1 + 0][1] = y + height;
+		bufVertices[i + 1 + 0][2] = 0;
+		bufVertices[i + 1 + 1][0] = x;
+		bufVertices[i + 1 + 1][1] = y;
+		bufVertices[i + 1 + 1][2] = 0;
+		bufVertices[i + 1 + 2][0] = x + width;
+		bufVertices[i + 1 + 2][1] = y;
+		bufVertices[i + 1 + 2][2] = 0;
+	}
+
+#define TEXTURE_SYMS_H 16
+#define TEXTURE_SYMS_V 16
+#define TEXTURE_SYMS_WIDTH  (1.0f/TEXTURE_SYMS_H)
+#define TEXTURE_SYMS_HEIGHT (1.0f/TEXTURE_SYMS_V)
+
+	/* Fill buffer with UVs */
+	for (int i = 0; i < symCount; i++) {
+		bufUvs[i + 0 + 0][0] = 0;
+		bufUvs[i + 0 + 0][1] = 0;
+		bufUvs[i + 0 + 1][0] = 0;
+		bufUvs[i + 0 + 1][1] = 1;
+		bufUvs[i + 0 + 2][0] = 1;
+		bufUvs[i + 0 + 2][1] = 1;
+		bufUvs[i + 1 + 0][0] = 0;
+		bufUvs[i + 1 + 0][1] = 0;
+		bufUvs[i + 1 + 1][0] = 1;
+		bufUvs[i + 1 + 1][1] = 0;
+		bufUvs[i + 1 + 2][0] = 1;
+		bufUvs[i + 1 + 2][1] = 1;
+		/* TODO Temporary using testing texture for all
+		float uvX = (str[i] % TEXTURE_SYMS_H) * TEXTURE_SYMS_WIDTH;
+		float uvY = 1 - (str[i] / TEXTURE_SYMS_V + 1) * TEXTURE_SYMS_HEIGHT;
+		bufUvs[i + 0 + 0][0] = uvX;
+		bufUvs[i + 0 + 0][1] = uvY;
+		bufUvs[i + 0 + 1][0] = uvX + TEXTURE_SYMS_WIDTH;
+		bufUvs[i + 0 + 1][1] = uvY + TEXTURE_SYMS_HEIGHT;
+		bufUvs[i + 0 + 2][0] = uvX;
+		bufUvs[i + 0 + 2][1] = uvY + TEXTURE_SYMS_HEIGHT;
+		bufUvs[i + 1 + 0][0] = uvX + TEXTURE_SYMS_WIDTH;
+		bufUvs[i + 1 + 0][1] = uvY + TEXTURE_SYMS_HEIGHT;
+		bufUvs[i + 1 + 1][0] = uvX;
+		bufUvs[i + 1 + 1][1] = uvY;
+		bufUvs[i + 1 + 2][0] = uvX + TEXTURE_SYMS_WIDTH;
+		bufUvs[i + 1 + 2][1] = uvY;
+		*/
+	}
+
+	glBindBuffer(GL_ARRAY_BUFFER, vertice);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * symCount*2*3*3, bufVertices, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, uv);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * symCount*2*3*2, bufUvs, GL_STATIC_DRAW);
+
+	return symCount * 2;
+}
+
+/* Try to draw some stats at window bottom
+ * Start with just colorful rectangles
+ * Set rendered font texture to write "WIN - 0:0 - LOSE"
+ */
 void drawStats() {
+	GLuint vaStats, vaUvs, textureId;
+	/* TODO Create buffers somewhere else? */
+	glGenBuffers(1, &vaStats);
+	glGenBuffers(1, &vaUvs);
+
+	int N = fillStatsBuffers("WIN - 0:0 - LOSE", vaStats, vaUvs);
+	textureId = glGetUniformLocation(progText, "texSampler");
+
+	glUseProgram(progText);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texText);
+	glUniform1i(textureId, 0);
+
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vaStats);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glBindBuffer(GL_ARRAY_BUFFER, vaUvs);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glDrawArrays(GL_TRIANGLES, 0, N);
+
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+	glDeleteBuffers(1, &vaUvs);
+	glDeleteBuffers(1, &vaStats);
 }
 
 void drawCross(GLfloat dx, GLfloat dy) {
@@ -146,10 +401,6 @@ void renderPlayground() {
 	 */
 	drawBorders();
 
-	/* Try to draw some stats at window bottom
-	 * Start with just colorful rectangles
-	 * Set rendered font texture to write "WIN - 0:0 - LOSE"
-	 */
 	drawStats();
 
 	const GLfloat dx = 0.25f * 2;
@@ -339,10 +590,7 @@ int main(void) {
 	glfwSetMouseButtonCallback(win, cbMouseButton);
 	Debug("Input callbacks initialized");
 
-	/* Prepare shaders
-	 */
-	progBorders = LoadShaders("shaderBordersVertex.glsl", "shaderBordersFragment.glsl");
-	Debug("Shaders initialized");
+	loadResources();
 
 	/* TODO */
 	gameState = 3;
