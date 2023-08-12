@@ -6,7 +6,7 @@
 #include <GLFW/glfw3.h>
 #include "shadertools.h"
 #include "utils.h"
-#include <jpeglib.h>
+#include "image.h"
 
 #define WIN_WIDTH 800
 #define WIN_HEIGHT 600
@@ -14,128 +14,28 @@
 #define CIRCLE_VERTEX_COUNT 16
 #define PI 3.14159265f
 
-struct Image {
-	JSAMPARRAY image;
-	int width;
-	int height;
-	int comps;
-};
-
-struct Image * imageCreate(int width, int height, int comps) {
-	struct Image *this;
-	if ((this = malloc(sizeof(struct Image))) == NULL) {
-		Error("Can't allocate struct Image");
-	}
-	this->height = height;
-	this->width = width;
-	this->comps = comps;
-	int rowLength = width * comps;
-	if ((this->image = malloc(height * sizeof(JSAMPROW))) == NULL) {
-		Error("Can't allocate Image rows array");
-	}
-	for (int i = 0; i < height; i++) {
-		if ((this->image[i] = malloc(rowLength * sizeof(JSAMPLE))) == NULL) {
-			Error("Can't allocate Image contents");
-		}
-	}
-	return this;
-}
-
-void imageDelete(struct Image *this) {
-	if (this == NULL) {
-		Error("Trying to delete non created image!");
-		return;
-	}
-	for (int i = 0; i < this->height; i++) {
-		free(this->image[i]);
-	}
-	free(this->image);
-	free(this);
-}
-
-void imageFillLine(struct Image *this, const JSAMPROW line, int linenum) {
-	if (this == NULL) {
-		Error("Trying to fill non created image!");
-		return;
-	}
-	for (int i = 0; i < this->width; i++) {
-		for (int j = 0; j < this->comps; j++) {
-			this->image[linenum][i+j] = line[i+j];
-		}
-	}
-}
-
 /* TODO Move to structure */
 GLuint progBorders;
 GLuint progText;
 GLuint texText;
+GLuint texSamplerId;
 int gameState;
 int winner;
 int tiles[9];
-
-struct Image * loadImage() {
-	/* load JPEG
-	 * Allocate and initialize a JPEG decompression object
-	 * Specify the source of the compressed data (eg, a file)
-	 * Call jpeg_read_header() to obtain image info
-	 * Set parameters for decompression
-	 * jpeg_start_decompress(...);
-	 * while (scan lines remain to be read)
-	 * 	jpeg_read_scanlines(...);
-	 * jpeg_finish_decompress(...);
-	 * Release the JPEG decompression object
-	 */
-	const char textureFilename[] = "test.jpg";
-	FILE *img;
-	struct jpeg_decompress_struct cinfo;
-	struct jpeg_error_mgr jerr;
-	struct Image *result;
-
-	if ((img = fopen(textureFilename, "rb")) == NULL) {
-		Error("Can't open texture image");
-	}
-
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_decompress(&cinfo);
-	jpeg_stdio_src(&cinfo, img);
-
-	Debug("JPEG header reading status: %d", jpeg_read_header(&cinfo, TRUE));
-
-	jpeg_start_decompress(&cinfo);
-	result = imageCreate(cinfo.output_width, cinfo.output_height, cinfo.output_components);
-	Debug("Reading texture image with size %dx%dx%d", result->width, result->height, result->comps);
-	JSAMPARRAY buf = (*cinfo.mem->alloc_sarray)((j_common_ptr)&cinfo, JPOOL_IMAGE, cinfo.output_width * cinfo.output_components, 1);
-	Debug("Line buffer memory allocated");
-	while (cinfo.output_scanline < cinfo.output_height) {
-		jpeg_read_scanlines(&cinfo, buf, 1);
-		imageFillLine(result, buf[0], cinfo.output_scanline - 1);
-	}
-	Debug("Texture image readed!");
-
-	jpeg_finish_decompress(&cinfo);
-	jpeg_destroy_decompress(&cinfo);
-	fclose(img);
-
-	if (jerr.num_warnings > 0) {
-		Debug("There are %d JPEG warnings after cleanup", jerr.num_warnings);
-	}
-
-	return result;
-}
 
 GLuint loadStatsTexture() {
 	static GLuint texture = 0;
 	if (texture != 0) return texture;
 
 	struct Image *textureImage;
-	textureImage = loadImage();
+	textureImage = loadImage("test.jpg");
 
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, textureImage->width, textureImage->height, 0, GL_RGB, GL_UNSIGNED_BYTE, textureImage->image);
 	/* TODO Poor filtering, change to better later */
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
 	imageDelete(textureImage);
 
@@ -182,6 +82,49 @@ void renderMainMenu(GLFWwindow *win) {
 
 }
 
+void drawBackground() {
+	GLuint vaStats, vaUvs;
+	glGenBuffers(1, &vaStats);
+	glGenBuffers(1, &vaUvs);
+
+	int N = 4;
+	float bufVertices[] = {
+		-1, -1, 0,
+		-1,  1, 0,
+		 1, -1, 0,
+		 1,  1, 0
+	};
+	float bufUvs[] = {
+		0, 1,
+		0, 0,
+		1, 1,
+		1, 0
+	};
+
+	glUseProgram(progText);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texText);
+	glUniform1i(texSamplerId, 0);
+
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, vaStats);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * N*3, bufVertices, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glEnableVertexAttribArray(1);
+	glBindBuffer(GL_ARRAY_BUFFER, vaUvs);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * N*2, bufUvs, GL_STATIC_DRAW);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, N);
+
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+	glDeleteBuffers(1, &vaUvs);
+	glDeleteBuffers(1, &vaStats);
+}
+
 void drawBorders() {
 	static const GLfloat ptsBordersVertex[] = {
 		-.25f, -.6, 0.0f,
@@ -208,80 +151,58 @@ void drawBorders() {
 
 int fillStatsBuffers(char *str, GLuint vertice, GLuint uv) {
 	int symCount = strlen(str);
-	float bufVertices[symCount*2*3][3];
-	float bufUvs[symCount*2*3][2];
+	if (symCount < 1) return 0;
 
-	float x, y;
-	float width = 0.05f;
-	float height = 0.1f;
+	int N = symCount * 2 * 3;
+	float bufVertices[N*3];
+	float bufUvs[N*2];
 
-	/* Fill buffer with vertices */
-	for (int i = 0; i < symCount; i++) {
-		x = width * i;
-		y = -1 + 0.05f;
-		bufVertices[i + 0 + 0][0] = x;
-		bufVertices[i + 0 + 0][1] = y;
-		bufVertices[i + 0 + 0][2] = 0;
-		bufVertices[i + 0 + 1][0] = x + width;
-		bufVertices[i + 0 + 1][1] = y + height;
-		bufVertices[i + 0 + 1][2] = 0;
-		bufVertices[i + 0 + 2][0] = x;
-		bufVertices[i + 0 + 2][1] = y + height;
-		bufVertices[i + 0 + 2][2] = 0;
-		bufVertices[i + 1 + 0][0] = x + width;
-		bufVertices[i + 1 + 0][1] = y + height;
-		bufVertices[i + 1 + 0][2] = 0;
-		bufVertices[i + 1 + 1][0] = x;
-		bufVertices[i + 1 + 1][1] = y;
-		bufVertices[i + 1 + 1][2] = 0;
-		bufVertices[i + 1 + 2][0] = x + width;
-		bufVertices[i + 1 + 2][1] = y;
-		bufVertices[i + 1 + 2][2] = 0;
-	}
+	float symWidth = 0.05f;
+	float symHeight = 0.15f;
+	float x = -symCount * symWidth / 2;
+	float y = -1;
+	float z = 0;
 
-#define TEXTURE_SYMS_H 16
-#define TEXTURE_SYMS_V 16
-#define TEXTURE_SYMS_WIDTH  (1.0f/TEXTURE_SYMS_H)
-#define TEXTURE_SYMS_HEIGHT (1.0f/TEXTURE_SYMS_V)
+	for (int i = 0; i < symCount; i++, x += symWidth) {
+		bufVertices[(i*2*3*3) + (0*9) + (0*3) + 0] = x;
+		bufVertices[(i*2*3*3) + (0*9) + (0*3) + 1] = y + symHeight;
+		bufVertices[(i*2*3*3) + (0*9) + (0*3) + 2] = z;
+		bufVertices[(i*2*3*3) + (0*9) + (1*3) + 0] = x;
+		bufVertices[(i*2*3*3) + (0*9) + (1*3) + 1] = y;
+		bufVertices[(i*2*3*3) + (0*9) + (1*3) + 2] = z;
+		bufVertices[(i*2*3*3) + (0*9) + (2*3) + 0] = x + symWidth;
+		bufVertices[(i*2*3*3) + (0*9) + (2*3) + 1] = y + symHeight;
+		bufVertices[(i*2*3*3) + (0*9) + (2*3) + 2] = z;
+		bufVertices[(i*2*3*3) + (1*9) + (0*3) + 0] = x + symWidth;
+		bufVertices[(i*2*3*3) + (1*9) + (0*3) + 1] = y + symHeight;
+		bufVertices[(i*2*3*3) + (1*9) + (0*3) + 2] = z;
+		bufVertices[(i*2*3*3) + (1*9) + (1*3) + 0] = x;
+		bufVertices[(i*2*3*3) + (1*9) + (1*3) + 1] = y;
+		bufVertices[(i*2*3*3) + (1*9) + (1*3) + 2] = z;
+		bufVertices[(i*2*3*3) + (1*9) + (2*3) + 0] = x + symWidth;
+		bufVertices[(i*2*3*3) + (1*9) + (2*3) + 1] = y;
+		bufVertices[(i*2*3*3) + (1*9) + (2*3) + 2] = z;
 
-	/* Fill buffer with UVs */
-	for (int i = 0; i < symCount; i++) {
-		bufUvs[i + 0 + 0][0] = 0;
-		bufUvs[i + 0 + 0][1] = 0;
-		bufUvs[i + 0 + 1][0] = 0;
-		bufUvs[i + 0 + 1][1] = 1;
-		bufUvs[i + 0 + 2][0] = 1;
-		bufUvs[i + 0 + 2][1] = 1;
-		bufUvs[i + 1 + 0][0] = 0;
-		bufUvs[i + 1 + 0][1] = 0;
-		bufUvs[i + 1 + 1][0] = 1;
-		bufUvs[i + 1 + 1][1] = 0;
-		bufUvs[i + 1 + 2][0] = 1;
-		bufUvs[i + 1 + 2][1] = 1;
-		/* TODO Temporary using testing texture for all
-		float uvX = (str[i] % TEXTURE_SYMS_H) * TEXTURE_SYMS_WIDTH;
-		float uvY = 1 - (str[i] / TEXTURE_SYMS_V + 1) * TEXTURE_SYMS_HEIGHT;
-		bufUvs[i + 0 + 0][0] = uvX;
-		bufUvs[i + 0 + 0][1] = uvY;
-		bufUvs[i + 0 + 1][0] = uvX + TEXTURE_SYMS_WIDTH;
-		bufUvs[i + 0 + 1][1] = uvY + TEXTURE_SYMS_HEIGHT;
-		bufUvs[i + 0 + 2][0] = uvX;
-		bufUvs[i + 0 + 2][1] = uvY + TEXTURE_SYMS_HEIGHT;
-		bufUvs[i + 1 + 0][0] = uvX + TEXTURE_SYMS_WIDTH;
-		bufUvs[i + 1 + 0][1] = uvY + TEXTURE_SYMS_HEIGHT;
-		bufUvs[i + 1 + 1][0] = uvX;
-		bufUvs[i + 1 + 1][1] = uvY;
-		bufUvs[i + 1 + 2][0] = uvX + TEXTURE_SYMS_WIDTH;
-		bufUvs[i + 1 + 2][1] = uvY;
-		*/
+		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 0] = 0;
+		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 1] = 0;
+		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 0] = 0;
+		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 1] = 1;
+		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 0] = 1;
+		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 1] = 0;
+		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 0] = 1;
+		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 1] = 0;
+		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 0] = 0;
+		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 1] = 1;
+		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 0] = 1;
+		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 1] = 1;
 	}
 
 	glBindBuffer(GL_ARRAY_BUFFER, vertice);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * symCount*2*3*3, bufVertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * N*3, bufVertices, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, uv);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * symCount*2*3*2, bufUvs, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * N*2, bufUvs, GL_STATIC_DRAW);
 
-	return symCount * 2;
+	return N;
 }
 
 /* Try to draw some stats at window bottom
@@ -289,24 +210,32 @@ int fillStatsBuffers(char *str, GLuint vertice, GLuint uv) {
  * Set rendered font texture to write "WIN - 0:0 - LOSE"
  */
 void drawStats() {
-	GLuint vaStats, vaUvs, textureId;
+	GLuint vaStats, vaUvs, idMvp;
 	/* TODO Create buffers somewhere else? */
 	glGenBuffers(1, &vaStats);
 	glGenBuffers(1, &vaUvs);
 
 	int N = fillStatsBuffers("WIN - 0:0 - LOSE", vaStats, vaUvs);
-	textureId = glGetUniformLocation(progText, "texSampler");
+	idMvp = glGetUniformLocation(progText, "MVP");
 
 	glUseProgram(progText);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texText);
-	glUniform1i(textureId, 0);
+	glUniform1i(texSamplerId, 0);
+	/* TODO make creation function */
+	float MVP[] = {
+		 1.0,  0.0,  0.0,  0.0,
+		 0.0,  1.0,  0.0,  0.0,
+		 0.0,  0.0,  1.0,  0.0,
+		 0.0,  0.0,  0.0,  1.0
+	};
+	glUniformMatrix4fv(idMvp, 1, GL_FALSE, MVP);
 
 	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
 	glBindBuffer(GL_ARRAY_BUFFER, vaStats);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glEnableVertexAttribArray(1);
 	glBindBuffer(GL_ARRAY_BUFFER, vaUvs);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -395,13 +324,13 @@ void renderPlayground() {
 	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
+	//drawBackground();
+
 	/* Draw tile borders TODO
 	 * Need to define border width and its coordinates
 	 * Tile size is .25×.3
 	 */
 	drawBorders();
-
-	drawStats();
 
 	const GLfloat dx = 0.25f * 2;
 	const GLfloat dy = 0.3f * 2;
@@ -414,6 +343,8 @@ void renderPlayground() {
 	drawTile(tiles[6], -dx, -dy);
 	drawTile(tiles[7], 0, -dy);
 	drawTile(tiles[8], dx, -dy);
+
+	drawStats();
 }
 
 void clearPlayground() {
@@ -591,6 +522,7 @@ int main(void) {
 	Debug("Input callbacks initialized");
 
 	loadResources();
+	texSamplerId = glGetUniformLocation(progText, "texSampler");
 
 	/* TODO */
 	gameState = 3;
