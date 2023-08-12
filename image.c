@@ -66,7 +66,7 @@ struct Image * loadImage(char * filename) {
 	jpeg_create_decompress(&cinfo);
 	jpeg_stdio_src(&cinfo, img);
 
-	Debug("JPEG header reading status: %d", jpeg_read_header(&cinfo, TRUE));
+	DebugStatus(jpeg_read_header(&cinfo, TRUE));
 
 	jpeg_start_decompress(&cinfo);
 	result = imageCreate(cinfo.output_width, cinfo.output_height, cinfo.output_components);
