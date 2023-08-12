@@ -1,18 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef DEBUG
-void Debug(char *message) {
-#ifdef DEBUG
-	fprintf(stderr, "[Debug]: %s\n", message);
-#endif
-}
-
-void DebugPos(double x, double y) {
-	fprintf(stderr, "[Debug]: Cursor position: %.2f:%.2f\n", x, y);
-}
-#endif
-
 void Error(char *message) {
 	fprintf(stderr, "[Error]: %s\n", message);
 }
