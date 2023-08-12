@@ -3,6 +3,32 @@
 #include <GL/glew.h>
 #include "utils.h"
 
+static void PrintShaderError(GLuint shader) {
+	int logLength;
+	char *log;
+	glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+	if (logLength > 0){
+		log = malloc(logLength);
+		glGetShaderInfoLog(shader, logLength, NULL, log);
+		Error("Can't compile vertex shader:");
+		Error(log);
+		free(log);
+	}
+}
+
+static void PrintProgramError(GLuint program) {
+	int logLength;
+	char *log;
+	glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+	if (logLength > 0){
+		log = malloc(logLength);
+		glGetProgramInfoLog(program, logLength, NULL, log);
+		Error("Can't link shader program:");
+		Error(log);
+		free(log);
+	}
+}
+
 GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	/* Load shader code from file */
 	char *data[2];
@@ -32,8 +58,8 @@ GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	glCompileShader(shVertex);
 	glGetShaderiv(shVertex, GL_COMPILE_STATUS, &res);
 	if (!res) {
-		Error("Can't compile vertex shader");
-		/* TODO Compilation error message */
+		PrintShaderError(shVertex);
+		goto cleanup;
 	}
 	Debug("Vertex shader compiled");
 
@@ -43,8 +69,8 @@ GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	glCompileShader(shFragment);
 	glGetShaderiv(shFragment, GL_COMPILE_STATUS, &res);
 	if (!res) {
-		Error("Can't compile fragment shader");
-		/* TODO Compilation error message */
+		PrintShaderError(shFragment);
+		goto cleanup;
 	}
 	Debug("Fragment shader compiled");
 
@@ -53,12 +79,14 @@ GLuint LoadShaders(const char *vertexFile, const char *fragmentFile) {
 	glAttachShader(program, shVertex);
 	glAttachShader(program, shFragment);
 	glLinkProgram(program);
-	glGetShaderiv(shFragment, GL_LINK_STATUS, &res);
+	glGetProgramiv(program, GL_LINK_STATUS, &res);
 	if (!res) {
-		Error("Can't link shader program");
-		/* TODO Compilation error message */
+		PrintProgramError(program);
+		goto cleanup;
 	}
 	Debug("Shader program linked");
+
+cleanup:
 
 	glDetachShader(program, shVertex);
 	glDetachShader(program, shFragment);
