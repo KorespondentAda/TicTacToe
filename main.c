@@ -63,7 +63,7 @@ void loadResources() {
 	loadTextures();
 }
 
-void renderMainMenu(GLFWwindow *win) {
+void renderMainMenu() {
 	/* Main menu consists of:
 	 * background
 	 * title
@@ -393,7 +393,7 @@ void checkCondition() {
 		clearPlayground();
 	}
 	gameState ^= 1;
-	fprintf(stderr, "[Debug] gameState = %d\n", gameState);
+	Debug("gameState = %d", gameState);
 }
 
 void doTurn() {
