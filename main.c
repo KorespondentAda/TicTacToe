@@ -149,7 +149,48 @@ void drawBorders() {
 	glDeleteBuffers(1, &vaTileBorders);
 }
 
-int fillStatsBuffers(char *str, GLuint vertice, GLuint uv) {
+int symbolCode(char c) {
+	if (c >= 'a' && c <= 'z') {
+		c -= 'a';
+		c += 0;
+	} else if (c >= '0' && c <= '5') {
+		c -= '0';
+		c += 'z' - 'a' + 1;
+	} else if (c >= 'A' && c <= 'Z') {
+		c -= 'A';
+		c += 8*4;
+	} else if (c >= '6' && c <= '9') {
+		c -= '6';
+		c += 8*4;
+		c += 'Z' - 'A' + 1;
+	} else if (c == ':') {
+		c = 62;
+	} else if (c == ' ') {
+		c = 63;
+	} else {
+		Error("Symbol code does not exists!");
+		return -1;
+	}
+	return c;
+}
+
+float symbolUCoord(char c) {
+	return (symbolCode(c) % 8) / 8.0f;
+}
+
+float symbolVCoord(char c) {
+	return (symbolCode(c) / 8 + 1) / 8.0f;
+}
+
+float symbolULen(char UNUSED(c)) {
+	return 1.0f / 8.0f;
+}
+
+float symbolVLen(char UNUSED(c)) {
+	return -1.0f / 8.0f;
+}
+
+int fillStatsBuffers(const char *str, GLuint vertice, GLuint uv) {
 	int symCount = strlen(str);
 	if (symCount < 1) return 0;
 
@@ -183,18 +224,22 @@ int fillStatsBuffers(char *str, GLuint vertice, GLuint uv) {
 		bufVertices[(i*2*3*3) + (1*9) + (2*3) + 1] = y;
 		bufVertices[(i*2*3*3) + (1*9) + (2*3) + 2] = z;
 
-		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 0] = 0;
-		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 1] = 0;
-		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 0] = 0;
-		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 1] = 1;
-		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 0] = 1;
-		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 1] = 0;
-		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 0] = 1;
-		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 1] = 0;
-		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 0] = 0;
-		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 1] = 1;
-		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 0] = 1;
-		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 1] = 1;
+		float u = symbolUCoord(str[i]);
+		float v = symbolVCoord(str[i]);
+		float ul = symbolULen(str[i]);
+		float vl = symbolVLen(str[i]);
+		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 0] = u;
+		bufUvs[(i*2*3*2) + (0*6) + (0*2) + 1] = v + vl;
+		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 0] = u;
+		bufUvs[(i*2*3*2) + (0*6) + (1*2) + 1] = v;
+		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 0] = u + ul;
+		bufUvs[(i*2*3*2) + (0*6) + (2*2) + 1] = v + vl;
+		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 0] = u + ul;
+		bufUvs[(i*2*3*2) + (1*6) + (0*2) + 1] = v + vl;
+		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 0] = u;
+		bufUvs[(i*2*3*2) + (1*6) + (1*2) + 1] = v;
+		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 0] = u + ul;
+		bufUvs[(i*2*3*2) + (1*6) + (2*2) + 1] = v;
 	}
 
 	glBindBuffer(GL_ARRAY_BUFFER, vertice);
@@ -215,7 +260,7 @@ void drawStats() {
 	glGenBuffers(1, &vaStats);
 	glGenBuffers(1, &vaUvs);
 
-	int N = fillStatsBuffers("WIN - 0:0 - LOSE", vaStats, vaUvs);
+	int N = fillStatsBuffers("WIN 0:0 LOSE", vaStats, vaUvs);
 	idMvp = glGetUniformLocation(progText, "MVP");
 
 	glUseProgram(progText);
