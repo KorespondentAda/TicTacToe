@@ -1,5 +1,11 @@
 #pragma once
 
+#if defined __GNUC__
+# define UNUSED(x) U_ ## x __attribute__((unused))
+#else
+# define UNUSED(x) U_ ## x
+#endif
+
 #if defined DEBUG
 # define Debug(MESSAGE, ...) fprintf(stderr, "[Debug]: " MESSAGE "\n", ##__VA_ARGS__);
 # define DebugPos(X, Y) fprintf(stderr, "[Debug]: Cursor position: %.2f:%.2f\n", X, Y);

@@ -459,7 +459,7 @@ int getTileByCoord(GLFWwindow *win, double x, double y) {
 	return res;
 }
 
-void cbMouseButton(GLFWwindow *win, int button, int action, int mods) {
+void cbMouseButton(GLFWwindow *win, int button, int action, int UNUSED(mods)) {
 	/* Can determine which button pressed:
 	 * GLFW_MOUSE_BUTTON_LEFT == GLFW_MOUSE_BUTTON_1
 	 * GLFW_MOUSE_BUTTON_MIDDLE == GLFW_MOUSE_BUTTON_3
