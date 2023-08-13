@@ -28,7 +28,7 @@ GLuint loadStatsTexture() {
 	if (texture != 0) return texture;
 
 	struct Image *textureImage;
-	textureImage = loadImage("test.jpg");
+	textureImage = loadImage("font.jpg");
 
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
