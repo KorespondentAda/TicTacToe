@@ -13,6 +13,7 @@
 #define WIN_NAME "TicTacToe"
 #define CIRCLE_VERTEX_COUNT 16
 #define PI 3.14159265f
+#define STAT_LEN 32
 
 /* TODO Move to structure */
 GLuint progBorders;
@@ -22,6 +23,11 @@ GLuint texSamplerId;
 int gameState;
 int winner;
 int tiles[9];
+
+struct {
+	int wins;
+	int loses;
+} stats;
 
 GLuint loadStatsTexture() {
 	static GLuint texture = 0;
@@ -261,7 +267,9 @@ void drawStats() {
 	glGenBuffers(1, &vaStats);
 	glGenBuffers(1, &vaUvs);
 
-	int N = fillStatsBuffers("WIN 0:0 LOSE", vaStats, vaUvs);
+	char statStr[STAT_LEN];
+	snprintf(statStr, STAT_LEN, "WIN %d:%d LOSE", stats.wins, stats.loses);
+	int N = fillStatsBuffers(statStr, vaStats, vaUvs);
 	idMvp = glGetUniformLocation(progText, "MVP");
 
 	glUseProgram(progText);
@@ -424,6 +432,7 @@ void checkCondition() {
 	}
 	gameState ^= 1;
 	Debug("gameState = %d", gameState);
+	Debug("Current stats: %d:%d", stats.wins, stats.loses);
 #undef THREE_IN_A_ROW
 #undef POINT_TO
 }
@@ -557,6 +566,8 @@ int main(void) {
 
 	/* TODO */
 	gameState = 3;
+	stats.wins = 0;
+	stats.loses = 0;
 
 	GLuint vaId;
 	glGenVertexArrays(1, &vaId);
