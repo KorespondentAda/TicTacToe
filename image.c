@@ -84,7 +84,7 @@ struct Image * loadImage(char * filename) {
 	fclose(img);
 
 	if (jerr.num_warnings > 0) {
-		Debug("There are %d JPEG warnings after cleanup", jerr.num_warnings);
+		Debug("There are %ld JPEG warnings after cleanup", jerr.num_warnings);
 	}
 
 	return result;
