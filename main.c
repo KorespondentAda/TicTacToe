@@ -48,6 +48,7 @@ GLuint loadStatsTexture() {
 void loadPrograms() {
 	progBorders = LoadShaders("shaderBordersVertex.glsl", "shaderBordersFragment.glsl");
 	progText = LoadShaders("shaderTextVertex.glsl", "shaderTextFragment.glsl");
+	texSamplerId = glGetUniformLocation(progText, "texSampler");
 	Debug("Shaders loaded");
 }
 
@@ -399,38 +400,22 @@ void clearPlayground() {
 }
 
 void checkCondition() {
-	if (tiles[0] == tiles[1] && tiles[1] == tiles[2] && tiles[2] != 0) {
-		winner = tiles[0];
-		clearPlayground();
+#define POINT_TO_WINNER if (winner == 1) stats.wins++; else stats.loses++
+#define THREE_IN_A_ROW(I, J, K) \
+	if (tiles[I] == tiles[J] && tiles[J] == tiles[K] && tiles[K] != 0) { \
+		winner = tiles[I]; \
+		POINT_TO_WINNER; \
+		clearPlayground(); \
 	}
-	else if (tiles[3] == tiles[4] && tiles[4] == tiles[5] && tiles[5] != 0) {
-		winner = tiles[3];
-		clearPlayground();
-	}
-	else if (tiles[6] == tiles[7] && tiles[7] == tiles[8] && tiles[8] != 0) {
-		winner = tiles[8];
-		clearPlayground();
-	}
-	else if (tiles[0] == tiles[3] && tiles[3] == tiles[6] && tiles[6] != 0) {
-		winner = tiles[0];
-		clearPlayground();
-	}
-	else if (tiles[1] == tiles[4] && tiles[4] == tiles[7] && tiles[7] != 0) {
-		winner = tiles[1];
-		clearPlayground();
-	}
-	else if (tiles[2] == tiles[5] && tiles[5] == tiles[8] && tiles[8] != 0) {
-		winner = tiles[2];
-		clearPlayground();
-	}
-	else if (tiles[0] == tiles[4] && tiles[4] == tiles[8] && tiles[8] != 0) {
-		winner = tiles[4];
-		clearPlayground();
-	}
-	else if (tiles[6] == tiles[4] && tiles[4] == tiles[2] && tiles[2] != 0) {
-		winner = tiles[4];
-		clearPlayground();
-	}
+
+	THREE_IN_A_ROW(0, 1, 2)
+	THREE_IN_A_ROW(3, 4, 5)
+	THREE_IN_A_ROW(6, 7, 8)
+	THREE_IN_A_ROW(0, 3, 6)
+	THREE_IN_A_ROW(1, 4, 7)
+	THREE_IN_A_ROW(2, 5, 8)
+	THREE_IN_A_ROW(0, 4, 8)
+	THREE_IN_A_ROW(2, 4, 6)
 	if (tiles[0] != 0 && tiles[1] != 0 && tiles[2] != 0 &&
 			tiles[3] != 0 && tiles[4] != 0 && tiles[5] != 0 &&
 			tiles[6] != 0 && tiles[7] != 0 && tiles[8] != 0) {
@@ -439,6 +424,8 @@ void checkCondition() {
 	}
 	gameState ^= 1;
 	Debug("gameState = %d", gameState);
+#undef THREE_IN_A_ROW
+#undef POINT_TO
 }
 
 void doTurn() {
@@ -567,7 +554,6 @@ int main(void) {
 	Debug("Input callbacks initialized");
 
 	loadResources();
-	texSamplerId = glGetUniformLocation(progText, "texSampler");
 
 	/* TODO */
 	gameState = 3;
